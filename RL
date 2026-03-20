@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Car Soccer Game</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="score">0 - 0</div>
+
+<script type="module" src="main.js"></script>
+
+</body>
+</html>body {
+  margin: 0;
+  overflow: hidden;
+  background: black;
+}
+
+#score {
+  position: absolute;
+  top: 20px;
+  width: 100%;
+  text-align: center;
+  color: white;
+  font-size: 30px;
+  font-family: Arial;
+}import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.158/build/three.module.js";
+import * as CANNON from "https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js";
+
+// Scene
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x202020);
+
+// Camera
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+camera.position.set(0, 10, 15);
+
+// Renderer
+const renderer = new THREE.WebGLRenderer();
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+// Light
+const light = new THREE.DirectionalLight(0xffffff, 1);
+light.position.set(10, 20, 10);
+scene.add(light);// Physics world
+const world = new CANNON.World();
+world.gravity.set(0, -9.82, 0);
+
+// Floor
+const floorGeo = new THREE.BoxGeometry(30, 1, 50);
+const floorMat = new THREE.MeshStandardMaterial({ color: 0x444444 });
+const floor = new THREE.Mesh(floorGeo, floorMat);
+scene.add(floor);
+
+// Physics floor
+const floorBody = new CANNON.Body({
+  mass: 0,
+  shape: new CANNON.Box(new CANNON.Vec3(15, 0.5, 25))
+});
+world.addBody(floorBody);
+
+// Walls
+function createWall(x, z, w, h, d) {
+  const mesh = new THREE.Mesh(
+    new THREE.BoxGeometry(w, h, d),
+    new THREE.MeshStandardMaterial({ color: 0x888888 })
+  );
+  mesh.position.set(x, h/2, z);
+  scene.add(mesh);
+
+  const body = new CANNON.Body({
+    mass: 0,
+    shape: new CANNON.Box(new CANNON.Vec3(w/2, h/2, d/2))
+  });
+  body.position.set(x, h/2, z);
+  world.addBody(body);
+}
+
+// Side walls
+createWall(15, 0, 1, 5, 50);
+createWall(-15, 0, 1, 5, 50);
+
+// Back walls (leave gap = goal)
+createWall(0, 25, 30, 5, 1);
+createWall(0, -25, 30, 5, 1);// Car mesh
+const car = new THREE.Mesh(
+  new THREE.BoxGeometry(2, 1, 4),
+  new THREE.MeshStandardMaterial({ color: 0x00ff00 })
+);
+scene.add(car);
+
+// Car physics
+const carBody = new CANNON.Body({
+  mass: 5,
+  shape: new CANNON.Box(new CANNON.Vec3(1, 0.5, 2))
+});
+carBody.position.set(0, 2, 0);
+world.addBody(carBody);
+
+// Controls
+const keys = {};
+
+window.addEventListener("keydown", e => keys[e.key] = true);
+window.addEventListener("keyup", e => keys[e.key] = false);
+
+function controlCar() {
+  const speed = 10;
+  const boost = 20;
+
+  if (keys["w"]) carBody.velocity.z -= speed * 0.1;
+  if (keys["s"]) carBody.velocity.z += speed * 0.1;
+  if (keys["a"]) carBody.angularVelocity.y += 0.05;
+  if (keys["d"]) carBody.angularVelocity.y -= 0.05;
+
+  // Boost
+  if (keys["Shift"]) carBody.velocity.z -= boost * 0.2;
+
+  // Jump
+  if (keys[" "]) {
+    if (Math.abs(carBody.velocity.y) < 0.1) {
+      carBody.velocity.y = 8;
+    }
+  }
+}const ball = new THREE.Mesh(
+  new THREE.SphereGeometry(1),
+  new THREE.MeshStandardMaterial({ color: 0xffffff })
+);
+scene.add(ball);
+
+const ballBody = new CANNON.Body({
+  mass: 1,
+  shape: new CANNON.Sphere(1)
+});
+ballBody.position.set(0, 5, 0);
+world.addBody(ballBody);let scoreA = 0;
+let scoreB = 0;
+
+function checkGoal() {
+  if (ballBody.position.z > 24) {
+    scoreA++;
+    reset();
+  }
+
+  if (ballBody.position.z < -24) {
+    scoreB++;
+    reset();
+  }
+
+  document.getElementById("score").innerText = `${scoreA} - ${scoreB}`;
+}
+
+function reset() {
+  ballBody.position.set(0, 5, 0);
+  ballBody.velocity.set(0, 0, 0);
+
+  carBody.position.set(0, 2, 0);
+  carBody.velocity.set(0, 0, 0);
+}function updateCamera() {
+  camera.position.x = car.position.x;
+  camera.position.z = car.position.z + 10;
+  camera.lookAt(car.position);
+}function animate() {
+  requestAnimationFrame(animate);
+
+  world.step(1/60);
+
+  controlCar();
+  checkGoal();
+  updateCamera();
+
+  // Sync graphics with physics
+  car.position.copy(carBody.position);
+  car.quaternion.copy(carBody.quaternion);
+
+  ball.position.copy(ballBody.position);
+
+  renderer.render(scene, camera);
+}
+
+animate();const hitSound = new Audio("hit.mp3");
+
+// play when ball speed increases
+if (ballBody.velocity.length() > 5) {
+  hitSound.play();
+}
